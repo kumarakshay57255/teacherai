@@ -172,10 +172,11 @@ export default function AdminDashboard() {
                     cx="50%"
                     cy="50%"
                     labelLine={false}
-                    label={({ board, count }) => `${board}: ${count}`}
+                    label={({ name, value }) => `${name || ''}: ${value || 0}`}
                     outerRadius={100}
                     fill="#8884d8"
                     dataKey="count"
+                    nameKey="board"
                   >
                     {boardDistribution.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
