@@ -1,10 +1,11 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { authApi, academicApi, Board, Class } from "@/lib/api"
 
 export function SignUpForm() {
   const router = useRouter()
@@ -12,16 +13,74 @@ export function SignUpForm() {
     name: "",
     phone: "",
     email: "",
-    school: "",
-    class: "",
+    boardId: "",
+    classId: "",
   })
+  const [boards, setBoards] = useState<Board[]>([])
+  const [classes, setClasses] = useState<Class[]>([])
+  const [loading, setLoading] = useState(false)
+  const [loadingBoards, setLoadingBoards] = useState(true)
+  const [loadingClasses, setLoadingClasses] = useState(false)
   const [error, setError] = useState("")
 
-  const classes = [
-    "Class 1", "Class 2", "Class 3", "Class 4", "Class 5",
-    "Class 6", "Class 7", "Class 8", "Class 9", "Class 10",
-    "Class 11", "Class 12"
-  ]
+  // Fetch boards on mount
+  useEffect(() => {
+    const fetchBoards = async () => {
+      setLoadingBoards(true)
+      const response = await academicApi.getBoards()
+      if (response.data) {
+        setBoards(response.data)
+      } else {
+        setError("Failed to load boards. Please refresh the page.")
+      }
+      setLoadingBoards(false)
+    }
+    fetchBoards()
+  }, [])
+
+  // Fetch classes when board changes
+  useEffect(() => {
+    if (!formData.boardId) {
+      setClasses([])
+      return
+    }
+
+    const fetchClasses = async () => {
+      setLoadingClasses(true)
+      setFormData(prev => ({ ...prev, classId: "" }))
+      const response = await academicApi.getClassesByBoard(formData.boardId)
+      if (response.data) {
+        setClasses(response.data)
+      } else {
+        setError("Failed to load classes. Please try again.")
+      }
+      setLoadingClasses(false)
+    }
+    fetchClasses()
+  }, [formData.boardId])
+
+  // Derive age from class name (e.g., "Class 5" -> age 10)
+  const deriveAgeFromClass = (classId: string): number => {
+    const selectedClass = classes.find(c => c.id === classId)
+    if (!selectedClass) return 10 // default age
+
+    const match = selectedClass.name.match(/\d+/)
+    if (match) {
+      const classNumber = parseInt(match[0], 10)
+      return classNumber + 5 // Class 1 = ~6 years, Class 10 = ~15 years
+    }
+    return 10
+  }
+
+  // Generate random password
+  const generatePassword = (): string => {
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%"
+    let password = ""
+    for (let i = 0; i < 12; i++) {
+      password += chars.charAt(Math.floor(Math.random() * chars.length))
+    }
+    return password
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -33,27 +92,54 @@ export function SignUpForm() {
       return
     }
 
+    if (formData.name.trim().length < 2) {
+      setError("Name must be at least 2 characters")
+      return
+    }
+
     if (formData.phone.length !== 10) {
       setError("Phone number must be 10 digits")
       return
     }
 
-    if (!formData.class) {
+    if (!formData.boardId) {
+      setError("Please select your board")
+      return
+    }
+
+    if (!formData.classId) {
       setError("Please select your class")
       return
     }
 
-    // Mock signup - save to localStorage
-    localStorage.setItem("userName", formData.name)
-    localStorage.setItem("userPhone", formData.phone)
-    if (formData.email) {
-      localStorage.setItem("userEmail", formData.email)
-    }
-    localStorage.setItem("userSchool", formData.school)
-    localStorage.setItem("userClass", formData.class)
+    setLoading(true)
 
-    // Navigate to dashboard
-    router.push("/dashboard")
+    const age = deriveAgeFromClass(formData.classId)
+    const password = generatePassword()
+
+    const response = await authApi.register({
+      name: formData.name.trim(),
+      age,
+      mobile: formData.phone,
+      email: formData.email || undefined,
+      password,
+      board_id: formData.boardId,
+      class_id: formData.classId,
+    })
+
+    setLoading(false)
+
+    if (response.error) {
+      if (response.status === 409) {
+        setError("An account with this phone number or email already exists. Please login instead.")
+      } else {
+        setError(response.error)
+      }
+      return
+    }
+
+    // Success - redirect to login
+    router.push("/login?registered=true")
   }
 
   return (
@@ -78,6 +164,7 @@ export function SignUpForm() {
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               className="bg-input border-border"
+              disabled={loading}
             />
           </div>
 
@@ -93,7 +180,14 @@ export function SignUpForm() {
               value={formData.phone}
               onChange={(e) => setFormData({ ...formData, phone: e.target.value.replace(/\D/g, "").slice(0, 10) })}
               className="bg-input border-border"
+              maxLength={10}
+              disabled={loading}
             />
+            {formData.phone && formData.phone.length < 10 && (
+              <p className="text-sm text-foreground/60 mt-1">
+                {formData.phone.length}/10 digits entered
+              </p>
+            )}
           </div>
 
           {/* Email */}
@@ -108,22 +202,31 @@ export function SignUpForm() {
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
               className="bg-input border-border"
+              disabled={loading}
             />
           </div>
 
-          {/* School */}
+          {/* Board Dropdown */}
           <div>
-            <label htmlFor="school" className="block text-sm font-medium text-foreground mb-2">
-              School Name
+            <label htmlFor="board" className="block text-sm font-medium text-foreground mb-2">
+              Select Your Board <span className="text-destructive">*</span>
             </label>
-            <Input
-              id="school"
-              type="text"
-              placeholder="Enter your school name (optional)"
-              value={formData.school}
-              onChange={(e) => setFormData({ ...formData, school: e.target.value })}
-              className="bg-input border-border"
-            />
+            <select
+              id="board"
+              value={formData.boardId}
+              onChange={(e) => setFormData({ ...formData, boardId: e.target.value })}
+              className="w-full px-3 py-2 bg-input border border-border rounded-md text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              disabled={loading || loadingBoards}
+            >
+              <option value="">
+                {loadingBoards ? "Loading boards..." : "Choose your board"}
+              </option>
+              {boards.map((board) => (
+                <option key={board.id} value={board.id}>
+                  {board.name}
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* Class Dropdown */}
@@ -133,14 +236,21 @@ export function SignUpForm() {
             </label>
             <select
               id="class"
-              value={formData.class}
-              onChange={(e) => setFormData({ ...formData, class: e.target.value })}
+              value={formData.classId}
+              onChange={(e) => setFormData({ ...formData, classId: e.target.value })}
               className="w-full px-3 py-2 bg-input border border-border rounded-md text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              disabled={loading || loadingClasses || !formData.boardId}
             >
-              <option value="">Choose your class</option>
+              <option value="">
+                {!formData.boardId
+                  ? "Select a board first"
+                  : loadingClasses
+                  ? "Loading classes..."
+                  : "Choose your class"}
+              </option>
               {classes.map((cls) => (
-                <option key={cls} value={cls}>
-                  {cls}
+                <option key={cls.id} value={cls.id}>
+                  {cls.name}
                 </option>
               ))}
             </select>
@@ -154,8 +264,12 @@ export function SignUpForm() {
           )}
 
           {/* Submit Button */}
-          <Button type="submit" className="w-full bg-primary hover:bg-primary/90 text-lg py-6">
-            Create Account
+          <Button
+            type="submit"
+            className="w-full bg-primary hover:bg-primary/90 text-lg py-6"
+            disabled={loading}
+          >
+            {loading ? "Creating Account..." : "Create Account"}
           </Button>
 
           {/* Login Link */}
@@ -165,6 +279,7 @@ export function SignUpForm() {
               type="button"
               onClick={() => router.push("/login")}
               className="text-primary hover:underline"
+              disabled={loading}
             >
               Login here
             </button>
