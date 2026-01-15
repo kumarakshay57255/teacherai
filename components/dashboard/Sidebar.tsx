@@ -1,26 +1,44 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
-import { Home, MessageSquare, BookOpen, Settings } from "lucide-react"
+import { usePathname, useRouter } from "next/navigation"
+import { Home, MessageSquare, BookOpen, Settings, LogOut } from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Button } from "@/components/ui/button"
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: Home },
   { name: "Tutor", href: "/tutor", icon: MessageSquare },
-  { name: "Courses", href: "/courses", icon: BookOpen },
+  // { name: "Courses", href: "/courses", icon: BookOpen },
   { name: "Settings", href: "/settings", icon: Settings },
 ]
 
 interface SidebarProps {
   user: {
     name: string
-    school?: string
+    className?: string
   }
 }
 
 export function Sidebar({ user }: SidebarProps) {
   const pathname = usePathname()
+  const router = useRouter()
+
+  const handleLogout = () => {
+    // Clear all user data from localStorage
+    localStorage.removeItem("token")
+    localStorage.removeItem("user")
+    localStorage.removeItem("userName")
+    localStorage.removeItem("userPhone")
+    localStorage.removeItem("userEmail")
+    localStorage.removeItem("userSchool")
+    localStorage.removeItem("userClass")
+    localStorage.removeItem("userRole")
+    localStorage.removeItem("adminEmail")
+
+    // Redirect to login
+    router.push("/login")
+  }
 
   return (
     <div className="w-64 bg-card border-r border-border flex flex-col h-screen">
@@ -33,9 +51,9 @@ export function Sidebar({ user }: SidebarProps) {
             </AvatarFallback>
           </Avatar>
           <h3 className="font-semibold text-center">{user.name}</h3>
-          {user.school && (
+          {user.className && (
             <p className="text-sm text-muted-foreground text-center">
-              {user.school}
+              {user.className}
             </p>
           )}
         </div>
@@ -63,6 +81,18 @@ export function Sidebar({ user }: SidebarProps) {
           )
         })}
       </nav>
+
+      {/* Logout Button */}
+      <div className="p-4 border-t border-border">
+        <Button
+          variant="ghost"
+          className="w-full justify-start text-destructive hover:text-destructive hover:bg-destructive/10"
+          onClick={handleLogout}
+        >
+          <LogOut className="h-5 w-5 mr-3" />
+          Logout
+        </Button>
+      </div>
     </div>
   )
 }

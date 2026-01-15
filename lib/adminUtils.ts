@@ -3,23 +3,29 @@
 import { Student, ChatSession, ActivityLog } from "./mockAdminData"
 
 // Format date to readable string
-export function formatDate(date: Date): string {
+export function formatDate(date: Date | string | null | undefined): string {
+  if (!date) return "N/A"
+  const parsedDate = date instanceof Date ? date : new Date(date)
+  if (isNaN(parsedDate.getTime())) return "Invalid Date"
   return new Intl.DateTimeFormat("en-IN", {
     year: "numeric",
     month: "short",
     day: "numeric",
-  }).format(date)
+  }).format(parsedDate)
 }
 
 // Format date with time
-export function formatDateTime(date: Date): string {
+export function formatDateTime(date: Date | string | null | undefined): string {
+  if (!date) return "N/A"
+  const parsedDate = date instanceof Date ? date : new Date(date)
+  if (isNaN(parsedDate.getTime())) return "Invalid Date"
   return new Intl.DateTimeFormat("en-IN", {
     year: "numeric",
     month: "short",
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-  }).format(date)
+  }).format(parsedDate)
 }
 
 // Format duration in minutes to readable string
@@ -124,12 +130,22 @@ export function filterStudents(students: Student[], query: string): Student[] {
 export function getAdminAuth(): { isAdmin: boolean; adminEmail?: string } {
   if (typeof window === "undefined") return { isAdmin: false }
 
-  const role = localStorage.getItem("userRole")
-  const email = localStorage.getItem("adminEmail")
+  const adminToken = localStorage.getItem("adminToken")
+  const adminUserStr = localStorage.getItem("adminUser")
+
+  let adminEmail: string | undefined
+  if (adminUserStr) {
+    try {
+      const adminUser = JSON.parse(adminUserStr)
+      adminEmail = adminUser.email
+    } catch {
+      // Invalid JSON, ignore
+    }
+  }
 
   return {
-    isAdmin: role === "admin",
-    adminEmail: email || undefined,
+    isAdmin: !!adminToken,
+    adminEmail,
   }
 }
 
@@ -139,14 +155,24 @@ export function setAdminAuth(email: string): void {
   localStorage.setItem("adminEmail", email)
 }
 
-// Clear admin auth
+// Clear admin auth and all user data
 export function clearAdminAuth(): void {
+  localStorage.removeItem("adminToken")
+  localStorage.removeItem("adminUser")
   localStorage.removeItem("userRole")
   localStorage.removeItem("adminEmail")
+  localStorage.removeItem("token")
+  localStorage.removeItem("user")
+  localStorage.removeItem("userName")
+  localStorage.removeItem("userPhone")
+  localStorage.removeItem("userEmail")
+  localStorage.removeItem("userSchool")
+  localStorage.removeItem("userClass")
 }
 
 // Check if user is admin
 export function isAdmin(): boolean {
   if (typeof window === "undefined") return false
-  return localStorage.getItem("userRole") === "admin"
+  const adminToken = localStorage.getItem("adminToken")
+  return !!adminToken
 }

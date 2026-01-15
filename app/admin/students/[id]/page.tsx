@@ -1,15 +1,14 @@
 "use client"
 
-import { use } from "react"
+import { use, useEffect, useState } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { mockStudents, mockChatSessions, mockActivityLog } from "@/lib/mockAdminData"
-import { mockSubjects } from "@/lib/mockData"
-import { formatDate, formatDateTime, formatDuration } from "@/lib/adminUtils"
-import { ArrowLeft, Mail, Phone, School, GraduationCap, Clock, MessageSquare, Activity as ActivityIcon } from "lucide-react"
+import { adminApi, AdminStudentUser } from "@/lib/api"
+import { formatDateTime } from "@/lib/adminUtils"
+import { ArrowLeft, Mail, Phone, GraduationCap, BookOpen, Calendar, CheckCircle, XCircle } from "lucide-react"
 
 interface StudentDetailPageProps {
   params: Promise<{ id: string }>
@@ -17,9 +16,58 @@ interface StudentDetailPageProps {
 
 export default function StudentDetailPage({ params }: StudentDetailPageProps) {
   const { id } = use(params)
-  const student = mockStudents.find((s) => s.id === id)
+  const [student, setStudent] = useState<AdminStudentUser | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
 
-  if (!student) {
+  useEffect(() => {
+    const fetchStudent = async () => {
+      const response = await adminApi.getUserById(id)
+      if (response.data) {
+        setStudent(response.data)
+      } else {
+        setError(response.error || "Student not found")
+      }
+      setLoading(false)
+    }
+    fetchStudent()
+  }, [id])
+
+  const handleDeactivate = async () => {
+    if (!student) return
+    const response = await adminApi.deactivateUser(student.id)
+    if (response.data) {
+      setStudent({ ...student, isActive: false })
+    }
+  }
+
+  const handleActivate = async () => {
+    if (!student) return
+    const response = await adminApi.activateUser(student.id)
+    if (response.data) {
+      setStudent({ ...student, isActive: true })
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center space-x-4">
+          <Link href="/admin/students">
+            <Button variant="outline">
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back to Students
+            </Button>
+          </Link>
+        </div>
+        <div className="flex items-center justify-center py-12">
+          <div className="text-foreground/60">Loading student details...</div>
+        </div>
+      </div>
+    )
+  }
+
+  if (error || !student) {
     return (
       <div className="space-y-6">
         <div className="flex items-center space-x-4">
@@ -31,35 +79,11 @@ export default function StudentDetailPage({ params }: StudentDetailPageProps) {
           </Link>
         </div>
         <div className="text-center py-12">
-          <p className="text-foreground/60">Student not found</p>
+          <p className="text-foreground/60">{error || "Student not found"}</p>
         </div>
       </div>
     )
   }
-
-  // Get student's chat sessions
-  const studentSessions = mockChatSessions.filter((s) => s.studentId === student.id)
-
-  // Get student's activity log
-  const studentActivity = mockActivityLog.filter((a) => a.userId === student.id).slice(0, 20)
-
-  // Calculate subject-wise performance
-  const subjectPerformance = student.subjects.map((subjectId) => {
-    const subject = mockSubjects.find((s) => s.id === subjectId)
-    const sessions = studentSessions.filter((s) => s.subject === subjectId)
-    const messages = sessions.reduce((sum, s) => sum + s.messageCount, 0)
-
-    return {
-      subject: subject?.name || "Unknown",
-      icon: subject?.icon || "📚",
-      sessions: sessions.length,
-      messages,
-      lastActivity: sessions.length > 0
-        ? sessions.sort((a, b) => b.startTime.getTime() - a.startTime.getTime())[0].startTime
-        : null,
-      performance: Math.floor(Math.random() * 30) + 70, // Mock performance score
-    }
-  })
 
   return (
     <div className="space-y-6">
@@ -74,8 +98,15 @@ export default function StudentDetailPage({ params }: StudentDetailPageProps) {
           </Link>
         </div>
         <div className="flex items-center space-x-2">
-          <Button variant="outline">Edit Profile</Button>
-          <Button variant="destructive">Suspend Account</Button>
+          {student.isActive ? (
+            <Button variant="destructive" onClick={handleDeactivate}>
+              Deactivate Account
+            </Button>
+          ) : (
+            <Button variant="default" onClick={handleActivate}>
+              Activate Account
+            </Button>
+          )}
         </div>
       </div>
 
@@ -94,53 +125,57 @@ export default function StudentDetailPage({ params }: StudentDetailPageProps) {
                   <h2 className="text-2xl font-bold text-foreground">{student.name}</h2>
                   <p className="text-sm text-foreground/60 mt-1">ID: {student.id}</p>
                 </div>
-                <Badge variant={student.status === "active" ? "success" : student.status === "inactive" ? "warning" : "danger"} className="text-lg px-4 py-2">
-                  {student.status}
-                </Badge>
+                <div className="flex items-center space-x-2">
+                  <Badge variant={student.isActive ? "success" : "danger"} className="text-lg px-4 py-2">
+                    {student.isActive ? "Active" : "Inactive"}
+                  </Badge>
+                  {student.isVerified && (
+                    <Badge variant="info" className="text-lg px-4 py-2">
+                      Verified
+                    </Badge>
+                  )}
+                </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
-                <div className="flex items-center space-x-2 text-foreground/70">
-                  <Mail className="w-4 h-4" />
-                  <span>{student.email}</span>
-                </div>
-                <div className="flex items-center space-x-2 text-foreground/70">
-                  <Phone className="w-4 h-4" />
-                  <span>{student.phone}</span>
-                </div>
-                <div className="flex items-center space-x-2 text-foreground/70">
-                  <School className="w-4 h-4" />
-                  <span>{student.school}</span>
-                </div>
-                <div className="flex items-center space-x-2 text-foreground/70">
-                  <GraduationCap className="w-4 h-4" />
-                  <span>{student.class}</span>
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-2 mt-4">
-                {student.subjects.map((subjectId) => {
-                  const subject = mockSubjects.find((s) => s.id === subjectId)
-                  return subject ? (
-                    <Badge key={subject.id} variant="default">
-                      {subject.icon} {subject.name}
-                    </Badge>
-                  ) : null
-                })}
+                {student.email && (
+                  <div className="flex items-center space-x-2 text-foreground/70">
+                    <Mail className="w-4 h-4" />
+                    <span>{student.email}</span>
+                  </div>
+                )}
+                {student.mobile && (
+                  <div className="flex items-center space-x-2 text-foreground/70">
+                    <Phone className="w-4 h-4" />
+                    <span>{student.mobile}</span>
+                  </div>
+                )}
+                {student.className && (
+                  <div className="flex items-center space-x-2 text-foreground/70">
+                    <GraduationCap className="w-4 h-4" />
+                    <span>{student.className}</span>
+                  </div>
+                )}
+                {student.boardName && (
+                  <div className="flex items-center space-x-2 text-foreground/70">
+                    <BookOpen className="w-4 h-4" />
+                    <span>{student.boardName}</span>
+                  </div>
+                )}
               </div>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Engagement Metrics */}
+      {/* Details Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card className="bg-card border-border">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-foreground/60">Total Sessions</p>
-                <p className="text-2xl font-bold text-foreground mt-1">{student.totalSessions}</p>
+                <p className="text-sm text-foreground/60">Age</p>
+                <p className="text-2xl font-bold text-foreground mt-1">{student.age || "N/A"}</p>
               </div>
-              <MessageSquare className="w-10 h-10 text-purple-500 opacity-50" />
             </div>
           </CardContent>
         </Card>
@@ -148,10 +183,18 @@ export default function StudentDetailPage({ params }: StudentDetailPageProps) {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-foreground/60">Total Messages</p>
-                <p className="text-2xl font-bold text-foreground mt-1">{student.totalMessages}</p>
+                <p className="text-sm text-foreground/60">Status</p>
+                <div className="flex items-center mt-1">
+                  {student.isActive ? (
+                    <CheckCircle className="w-6 h-6 text-green-500" />
+                  ) : (
+                    <XCircle className="w-6 h-6 text-red-500" />
+                  )}
+                  <span className="text-lg font-bold text-foreground ml-2">
+                    {student.isActive ? "Active" : "Inactive"}
+                  </span>
+                </div>
               </div>
-              <MessageSquare className="w-10 h-10 text-blue-500 opacity-50" />
             </div>
           </CardContent>
         </Card>
@@ -159,10 +202,18 @@ export default function StudentDetailPage({ params }: StudentDetailPageProps) {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-foreground/60">Avg Duration</p>
-                <p className="text-2xl font-bold text-foreground mt-1">{formatDuration(student.averageSessionDuration)}</p>
+                <p className="text-sm text-foreground/60">Verified</p>
+                <div className="flex items-center mt-1">
+                  {student.isVerified ? (
+                    <CheckCircle className="w-6 h-6 text-green-500" />
+                  ) : (
+                    <XCircle className="w-6 h-6 text-yellow-500" />
+                  )}
+                  <span className="text-lg font-bold text-foreground ml-2">
+                    {student.isVerified ? "Yes" : "No"}
+                  </span>
+                </div>
               </div>
-              <Clock className="w-10 h-10 text-green-500 opacity-50" />
             </div>
           </CardContent>
         </Card>
@@ -170,127 +221,16 @@ export default function StudentDetailPage({ params }: StudentDetailPageProps) {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-foreground/60">Last Active</p>
-                <p className="text-lg font-bold text-foreground mt-1">{formatDate(student.lastActive)}</p>
+                <p className="text-sm text-foreground/60">Registered</p>
+                <p className="text-lg font-bold text-foreground mt-1">
+                  {formatDateTime(student.createdAt)}
+                </p>
               </div>
-              <ActivityIcon className="w-10 h-10 text-amber-500 opacity-50" />
+              <Calendar className="w-10 h-10 text-purple-500 opacity-50" />
             </div>
           </CardContent>
         </Card>
       </div>
-
-      {/* Subject Performance & Activity */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Subject Performance */}
-        <Card className="bg-card border-border">
-          <CardHeader>
-            <CardTitle>Subject Performance</CardTitle>
-            <CardDescription>Performance metrics for each enrolled subject</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {subjectPerformance.map((sp) => (
-                <div key={sp.subject} className="border border-border rounded-lg p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center space-x-2">
-                      <span className="text-2xl">{sp.icon}</span>
-                      <span className="font-medium text-foreground">{sp.subject}</span>
-                    </div>
-                    <Badge variant="success">{sp.performance}%</Badge>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 text-sm">
-                    <div>
-                      <p className="text-foreground/60">Sessions</p>
-                      <p className="font-semibold text-foreground">{sp.sessions}</p>
-                    </div>
-                    <div>
-                      <p className="text-foreground/60">Messages</p>
-                      <p className="font-semibold text-foreground">{sp.messages}</p>
-                    </div>
-                    <div>
-                      <p className="text-foreground/60">Last Activity</p>
-                      <p className="font-semibold text-foreground">
-                        {sp.lastActivity ? formatDate(sp.lastActivity) : "Never"}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Activity Timeline */}
-        <Card className="bg-card border-border">
-          <CardHeader>
-            <CardTitle>Activity Timeline</CardTitle>
-            <CardDescription>Recent activities and events</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4 max-h-[400px] overflow-y-auto">
-              {studentActivity.map((activity) => (
-                <div key={activity.id} className="flex items-start space-x-3 pb-3 border-b border-border last:border-0">
-                  <div className={`w-2 h-2 rounded-full mt-2 flex-shrink-0 ${
-                    activity.type === "registration" ? "bg-green-500" :
-                    activity.type === "login" ? "bg-blue-500" :
-                    activity.type === "chat_start" ? "bg-purple-500" :
-                    activity.type === "chat_end" ? "bg-purple-400" :
-                    "bg-gray-500"
-                  }`}></div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-foreground font-medium truncate">{activity.description}</p>
-                    <p className="text-xs text-foreground/60 mt-1">{formatDateTime(activity.timestamp)}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Chat History */}
-      <Card className="bg-card border-border">
-        <CardHeader>
-          <CardTitle>Chat History</CardTitle>
-          <CardDescription>All chat sessions with the AI tutor</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            {studentSessions.slice(0, 10).map((session) => (
-              <div key={session.id} className="flex items-center justify-between p-4 border border-border rounded-lg hover:border-primary/50 transition-colors">
-                <div className="flex items-center space-x-4">
-                  <div className="text-2xl">
-                    {mockSubjects.find((s) => s.id === session.subject)?.icon || "📚"}
-                  </div>
-                  <div>
-                    <p className="font-medium text-foreground">{session.subjectName}</p>
-                    <p className="text-sm text-foreground/60">{formatDateTime(session.startTime)}</p>
-                  </div>
-                </div>
-                <div className="flex items-center space-x-6">
-                  <div className="text-right">
-                    <p className="text-sm text-foreground/60">Duration</p>
-                    <p className="font-semibold text-foreground">{formatDuration(session.duration)}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm text-foreground/60">Messages</p>
-                    <p className="font-semibold text-foreground">{session.messageCount}</p>
-                  </div>
-                  <Badge variant={session.status === "completed" ? "success" : "info"}>
-                    {session.status}
-                  </Badge>
-                  <Link href={`/admin/chats/${session.id}`}>
-                    <Button variant="outline" size="sm">View</Button>
-                  </Link>
-                </div>
-              </div>
-            ))}
-            {studentSessions.length === 0 && (
-              <p className="text-center text-foreground/60 py-8">No chat sessions yet</p>
-            )}
-          </div>
-        </CardContent>
-      </Card>
     </div>
   )
 }
